@@ -1,0 +1,127 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include "DHTesp.h"
+
+// Wi-Fi settings
+const char* WIFI_SSID = "Wokwi-GUEST";
+const char* WIFI_PASSWORD = "";
+
+// ThingSpeak Write API Key
+// Replace this only when running the code.
+const char* THINGSPEAK_API_KEY = "YOUR_THINGSPEAK_WRITE_API_KEY";
+
+// Pin configuration
+const int DHT_PIN = 15;
+const int LED_PIN = 2;
+
+// Alert thresholds
+const float MAX_TEMPERATURE = 35.0;
+const float MAX_HUMIDITY = 80.0;
+
+DHTesp dhtSensor;
+
+void setup() {
+  Serial.begin(115200);
+  delay(2000);
+
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+
+  dhtSensor.setup(DHT_PIN, DHTesp::DHT22);
+
+  Serial.println("================================");
+  Serial.println("WEATHER MONITORING SYSTEM");
+  Serial.println("================================");
+
+  Serial.println("Connecting to Wi-Fi...");
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println();
+  Serial.println("Wi-Fi Connected!");
+
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void loop() {
+
+  TempAndHumidity data = dhtSensor.getTempAndHumidity();
+
+  float temperature = data.temperature;
+  float humidity = data.humidity;
+
+  Serial.println("-----------------------------");
+
+  Serial.print("Temperature: ");
+  Serial.print(temperature, 1);
+  Serial.println(" C");
+
+  Serial.print("Humidity: ");
+  Serial.print(humidity, 1);
+  Serial.println(" %");
+
+  // Local LED alert
+  if (temperature > MAX_TEMPERATURE ||
+      humidity > MAX_HUMIDITY) {
+
+    digitalWrite(LED_PIN, HIGH);
+
+    Serial.println("WARNING: Extreme value detected!");
+    Serial.println("LED: ON");
+
+  } else {
+
+    digitalWrite(LED_PIN, LOW);
+
+    Serial.println("Status: Normal");
+    Serial.println("LED: OFF");
+  }
+
+  // Send data to ThingSpeak
+  if (WiFi.status() == WL_CONNECTED) {
+
+    HTTPClient http;
+
+    String serverURL =
+      "http://api.thingspeak.com/update?api_key=";
+
+    serverURL += THINGSPEAK_API_KEY;
+    serverURL += "&field1=";
+    serverURL += String(temperature, 1);
+    serverURL += "&field2=";
+    serverURL += String(humidity, 1);
+
+    Serial.println("Sending data to ThingSpeak...");
+
+    http.begin(serverURL);
+
+    int httpResponseCode = http.GET();
+
+    if (httpResponseCode > 0) {
+
+      Serial.print("ThingSpeak Response: ");
+      Serial.println(httpResponseCode);
+
+    } else {
+
+      Serial.print("Error sending data: ");
+      Serial.println(httpResponseCode);
+    }
+
+    http.end();
+
+  } else {
+
+    Serial.println("Wi-Fi disconnected!");
+  }
+
+  Serial.println("Waiting 16 seconds...");
+  delay(16000);
+}
